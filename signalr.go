@@ -3,6 +3,7 @@ package signalr
 import (
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -65,6 +66,34 @@ type Message struct {
 
 	// groups token – an encrypted string representing group membership
 	G string
+}
+
+type RawClientMessage struct {
+	I int
+
+	// the name of the hub
+	H string
+
+	// the name of the method
+	M string
+
+	// arguments (an array, can be empty if the method does not have any
+	// parameters)
+	A []json.RawMessage
+
+	// state – a dictionary containing additional custom data (optional)
+	S json.RawMessage `json:",omitempty"`
+}
+
+type RawMessage struct {
+	C string
+	M []RawClientMessage
+	E string
+	R json.RawMessage
+	H json.RawMessage // could be bool or string depending on a message type
+	D json.RawMessage
+	T json.RawMessage
+	S json.RawMessage
 }
 
 // Scheme represents a type of transport scheme. For the purposes of this
@@ -630,9 +659,9 @@ func (c *Client) Reconnect() (conn *websocket.Conn, err error) {
 // that are part of the SignalR specification. It returns channels that:
 //  - receive messages from the websocket connection
 //  - receive errors encountered while processing the weblocket connection
-func (c *Client) Run() (msgCh chan Message, errCh chan error, err error) {
+func (c *Client) Run() (msgCh chan RawMessage, errCh chan error, err error) {
 	errCh = make(chan error)
-	msgCh = make(chan Message)
+	msgCh = make(chan RawMessage)
 
 	// Make a channel that is used to indicate that the connection
 	// initialization functions have completed or errored out.
@@ -674,7 +703,7 @@ func (c *Client) Run() (msgCh chan Message, errCh chan error, err error) {
 	return
 }
 
-func (c *Client) attemptReconnect(msgCh chan Message, errCh chan error) (ok bool) {
+func (c *Client) attemptReconnect(msgCh chan RawMessage, errCh chan error) (ok bool) {
 	// Attempt to reconnect in a retry loop.
 	reconnected := false
 	for i := 0; i < c.MaxReconnectRetries; i++ {
@@ -717,7 +746,7 @@ func errCode(err error) (code int) {
 	return
 }
 
-func (c *Client) processReadMessagesError(err error, msgCh chan Message, errCh chan error) (ok bool) {
+func (c *Client) processReadMessagesError(err error, msgCh chan RawMessage, errCh chan error) (ok bool) {
 	// Handle various types of errors.
 	// https://tools.ietf.org/html/rfc6455#section-7.4.1
 	code := errCode(err)
@@ -738,15 +767,17 @@ func (c *Client) processReadMessagesError(err error, msgCh chan Message, errCh c
 	return
 }
 
-func processReadMessagesMessage(p []byte, msgs chan Message, errs chan error) {
+func processReadMessagesMessage(p []byte, msgs chan RawMessage, errs chan error) {
 	// Ignore KeepAlive messages.
-	if string(p) == "{}" {
+	//fmt.Println("received: ", string(p))
+	if len(p) == 2 && p[0] == '{' && p[1] == '}' {
 		return
 	}
 
-	var msg Message
+	var msg RawMessage
 	err := json.Unmarshal(p, &msg)
 	if err != nil {
+		fmt.Println("Json unmarshal fail")
 		err = errors.Wrap(err, "json unmarshal failed")
 		errs <- err
 		return
@@ -755,7 +786,7 @@ func processReadMessagesMessage(p []byte, msgs chan Message, errs chan error) {
 	msgs <- msg
 }
 
-func (c *Client) readMessage(msgCh chan Message, errCh chan error) (ok bool) {
+func (c *Client) readMessage(msgCh chan RawMessage, errCh chan error) (ok bool) {
 	c.connMux.Lock()
 
 	// Set up a channel to receive signals from the Client.readMessage
@@ -807,7 +838,7 @@ func (c *Client) readMessage(msgCh chan Message, errCh chan error) (ok bool) {
 // ReadMessages processes WebSocket messages from the underlying websocket
 // connection. When a message is processed, it is passed along the msgCh
 // channel. When an error ocurrs, it is sent along the errCh channel.
-func (c *Client) ReadMessages(msgCh chan Message, errCh chan error) {
+func (c *Client) ReadMessages(msgCh chan RawMessage, errCh chan error) {
 	for {
 		if !c.readMessage(msgCh, errCh) {
 			return
