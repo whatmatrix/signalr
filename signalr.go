@@ -86,7 +86,7 @@ type RawClientMessage struct {
 }
 
 type RawMessage struct {
-        I int
+	I string
 	C string
 	M []RawClientMessage
 	E string
