@@ -15,9 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/whatmatrix/signalr/hubs"
 	"github.com/gorilla/websocket"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
+	"github.com/whatmatrix/signalr/hubs"
 )
 
 // MessageReader is the interface that wraps ReadMessage.
@@ -776,6 +777,7 @@ func processReadMessagesMessage(p []byte, msgs chan RawMessage, errs chan error)
 	}
 
 	var msg RawMessage
+	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	err := json.Unmarshal(p, &msg)
 	if err != nil {
 		fmt.Println("Json unmarshal fail")
